@@ -7,6 +7,7 @@ import DoctorLogin from './pages/DoctorLogin';
 import DoctorRegister from './pages/DoctorRegister';
 import Home from './pages/Home';
 import Report from './pages/Report';
+import AdminDashboard from './pages/AdminDashboard';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import './App.css';
 import StorageSettings from './pages/StorageSettings';
@@ -31,7 +32,7 @@ const ProtectedRoute = ({ children, requiredRole }) => {
     return <Navigate to="/doctor-login" replace />;
   }
 
-  if (requiredRole && user.role !== requiredRole) {
+  if (requiredRole && user.role !== requiredRole && !(user.role === 'admin' && requiredRole === 'doctor')) {
     console.log('ProtectedRoute: User role mismatch', { userRole: user.role, requiredRole });
     return <Navigate to="/home" replace />;
   }
@@ -65,6 +66,14 @@ function App() {
               }
             />
             <Route path="/storage-settings" element={<StorageSettings />} />
+            <Route
+              path="/admin-dashboard"
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
             <Route path="/" element={<Navigate to="/doctor-login" replace />} />
           </Routes>
         </div>

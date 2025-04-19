@@ -1,49 +1,43 @@
-import React, { createContext, useState, useContext, useEffect, useMemo } from 'react';
-import axios from 'axios';
+import React, { createContext, useState, useContext, useEffect, useMemo, useCallback } from 'react';
 import { authAPI } from '../services/api';
 
 const AuthContext = createContext();
-
 export const useAuth = () => useContext(AuthContext);
 
-export const AuthProvider = ({ children }) => {
+export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('token') || null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [storagePath, setStoragePath] = useState(localStorage.getItem('storagePath') || '');
 
+  // Initialize auth: restore token and fetch user
   useEffect(() => {
-    const initializeAuth = async () => {
-      const token = localStorage.getItem('token');
-      const userData = localStorage.getItem('user');
-      const savedPath = localStorage.getItem('storagePath');
-
-      if (savedPath) setStoragePath(savedPath);
-
-      if (token && userData) {
+    async function initialize() {
+      const savedToken = localStorage.getItem('token');
+      if (savedToken) {
+        setToken(savedToken);
         try {
-          const parsedUser = JSON.parse(userData);
-
-          axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-          setUser(parsedUser);
+          const { data } = await authAPI.getCurrentUser();
+          setUser(data.user);
         } catch (err) {
-          console.error('Error initializing auth:', err);
+          console.error('Session fetch failed:', err);
           localStorage.removeItem('token');
-          localStorage.removeItem('user');
+          setToken(null);
         }
       }
-
+      const savedPath = localStorage.getItem('storagePath');
+      if (savedPath) setStoragePath(savedPath);
       setLoading(false);
-    };
-
-    initializeAuth();
+    }
+    initialize();
   }, []);
 
   const login = async (credentials) => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
-
+      // Admin override logic
       if (
         credentials.doctorId?.toLowerCase() === 'admin' &&
         credentials.password === 'admin123'
@@ -68,70 +62,67 @@ export const AuthProvider = ({ children }) => {
       const response = await authAPI.login(credentials);
       const { token, user } = response.data;
 
+      // Persist session
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      setToken(token);
       setUser(user);
+
       return user;
     } catch (err) {
       console.error('Login error:', err);
-      const errorMessage = err.response?.data?.message || 'Login failed. Please check your credentials.';
+      const errorMessage = err.response?.data?.message || 'Login failed';
       setError(errorMessage);
-      throw err;
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
   const register = async (userData) => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
       const response = await authAPI.register(userData);
       const { token, user } = response.data;
 
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      setToken(token);
       setUser(user);
+
       return user;
     } catch (err) {
-      const errorMessage = err.response?.data?.message || 'Registration failed. Please try again later.';
+      const errorMessage = err.response?.data?.message || 'Registration failed';
       setError(errorMessage);
-      throw err;
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const logout = () => {
-    console.log('Logging out user');
+  const logout = async () => {
+    try {
+      await authAPI.logout();
+    } catch (e) {
+      console.error('Logout failed:', e);
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     localStorage.removeItem('storagePath');
-    delete axios.defaults.headers.common['Authorization'];
+    setToken(null);
     setUser(null);
     setStoragePath('');
   };
 
-  const updateStoragePath = (newPath) => {
+  const updateStoragePath = useCallback((newPath) => {
     localStorage.setItem('storagePath', newPath);
     setStoragePath(newPath);
-  };
+  }, []);
 
   const value = useMemo(
-    () => ({
-      user,
-      loading,
-      error,
-      login,
-      register,
-      logout,
-      setUser,
-      storagePath,
-      updateStoragePath,
-    }),
-    [user, loading, error, storagePath]
+    () => ({ user, token, loading, error, login, register, logout, storagePath, updateStoragePath }),
+    [user, token, loading, error, storagePath, login, updateStoragePath] // Add dependencies here
   );
 
   return (
@@ -139,4 +130,4 @@ export const AuthProvider = ({ children }) => {
       {children}
     </AuthContext.Provider>
   );
-};
+}

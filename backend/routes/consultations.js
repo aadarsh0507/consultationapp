@@ -4,13 +4,12 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const Consultation = require('../models/Consultation');
-const { protect, authorize } = require('../middleware/auth');
+const { authorize } = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
 
-// Load dynamic storage path (make sure you have a config for this path)
+// Load dynamic storage path
 const storageConfigPath = path.join(__dirname, '../config/storagePath.json');
 
-// Utility function to get dynamic video upload path
 const getVideoUploadPath = () => {
   try {
     const config = JSON.parse(fs.readFileSync(storageConfigPath, 'utf-8'));
@@ -21,7 +20,7 @@ const getVideoUploadPath = () => {
   }
 };
 
-// Configure multer for video upload
+// Configure multer
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadPath = getVideoUploadPath();
@@ -40,25 +39,18 @@ const upload = multer({
   }
 });
 
-// Upload a video (optional route, use if needed)
-router.post(
-  '/upload',
-  protect,
-  authorize('doctor', 'admin'),
-  upload.single('video'),
-  (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'No video file uploaded' });
-    }
-    res.status(200).json({ success: true, filePath: req.file.path, fileName: req.file.filename });
+// Upload a video
+router.post('/upload', authorize('doctor', 'admin'), upload.single('video'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: 'No video file uploaded' });
   }
-);
+  res.status(200).json({ success: true, filePath: req.file.path, fileName: req.file.filename });
+});
 
 // Create consultation
 router.post(
   '/',
   [
-    protect,
     authorize('doctor', 'admin'),
     body('patientName').notEmpty().withMessage('Patient name is required'),
     body('doctorName').notEmpty().withMessage('Doctor name is required'),
@@ -71,6 +63,13 @@ router.post(
     }
 
     try {
+      console.log('🚀 Consultation request body:', req.body);
+      console.log('🔐 Authenticated user:', req.user);
+
+      if (!req.user || !req.user.id) {
+        return res.status(401).json({ success: false, message: 'Unauthorized: Missing doctor ID' });
+      }
+
       const {
         patientName, uhidId, doctorName,
         attenderName, icuConsultantName,
@@ -93,17 +92,21 @@ router.post(
       await consultation.save();
       res.status(201).json({ success: true, data: consultation });
     } catch (error) {
-      console.error('Error creating consultation:', error);
+      console.error('❌ Error creating consultation:', error);
       if (error.code === 11000) {
         return res.status(400).json({ success: false, message: 'UHID already exists' });
       }
-      res.status(500).json({ success: false, message: 'Server error', error: process.env.NODE_ENV === 'development' ? error.message : undefined });
+      res.status(500).json({
+        success: false,
+        message: 'Server error',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
   }
 );
 
 // Get all consultations
-router.get('/', protect, authorize('doctor', 'admin'), async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const {
       dateFrom, dateTo, patientName, doctorName,
@@ -146,7 +149,7 @@ router.get('/', protect, authorize('doctor', 'admin'), async (req, res) => {
 });
 
 // Doctor-specific consultations
-router.get('/doctor', protect, async (req, res) => {
+router.get('/doctor', authorize('doctor', 'admin'), async (req, res) => {
   try {
     const consultations = await Consultation.find({ doctor: req.user.id }).sort({ date: -1 });
     res.json({ success: true, count: consultations.length, data: consultations });
@@ -157,7 +160,7 @@ router.get('/doctor', protect, async (req, res) => {
 });
 
 // Get consultation by UHID
-router.get('/uhid/:uhidId', protect, async (req, res) => {
+router.get('/uhid/:uhidId', async (req, res) => {
   try {
     const consultation = await Consultation.findOne({ uhidId: req.params.uhidId }).populate('doctor', 'name email');
     if (!consultation) return res.status(404).json({ success: false, message: 'Consultation not found' });
@@ -169,7 +172,7 @@ router.get('/uhid/:uhidId', protect, async (req, res) => {
 });
 
 // Update consultation
-router.put('/:id', protect, async (req, res) => {
+router.put('/:id', authorize('doctor', 'admin'), async (req, res) => {
   try {
     const consultation = await Consultation.findById(req.params.id);
     if (!consultation) return res.status(404).json({ success: false, message: 'Consultation not found' });
@@ -190,7 +193,7 @@ router.put('/:id', protect, async (req, res) => {
 });
 
 // Delete consultation
-router.delete('/:id', protect, async (req, res) => {
+router.delete('/:id', authorize('doctor', 'admin'), async (req, res) => {
   try {
     const consultation = await Consultation.findById(req.params.id);
     if (!consultation) return res.status(404).json({ success: false, message: 'Consultation not found' });

@@ -44,18 +44,19 @@ const DoctorLogin = () => {
     try {
       console.log('Attempting login with:', formData);
       setDebugInfo(`Attempting login with: ${JSON.stringify(formData)}`);
-      
+
+      // Make login request
       const loggedInUser = await login(formData);
       console.log('Login successful, user:', loggedInUser);
       setDebugInfo(`Login successful, user: ${JSON.stringify(loggedInUser)}`);
-      
+
       setSuccess('Login successful!');
       setTimeout(() => {
         navigate('/home', { replace: true });
-      }, 100);
+      }, 1000);  // Added delay for better UX
     } catch (err) {
       console.error('Login error:', err);
-      const errorMessage = err.message || 'Login failed. Please check your credentials.';
+      const errorMessage = err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';
       setError(errorMessage);
       setDebugInfo(`Error: ${errorMessage}\nFull error: ${JSON.stringify(err, null, 2)}`);
     } finally {
@@ -75,7 +76,7 @@ const DoctorLogin = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
             >
-              <Card className="shadow-lg border-0" style={{ 
+              <Card className="shadow-lg border-0" style={{
                 borderRadius: '20px',
                 background: 'rgba(255, 255, 255, 0.95)',
                 backdropFilter: 'blur(10px)'

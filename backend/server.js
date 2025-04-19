@@ -29,8 +29,9 @@ app.use(express.json());
 app.use(cors({
   origin: 'http://localhost:3000', // Your frontend URL
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  credentials: true,
+  preflightContinue: true
 }));
 
 // Rate limiting with more generous limits for development
@@ -149,7 +150,8 @@ app.use((err, req, res, next) => {
 });
 
 // Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI, {
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/consultationapp';
+mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })

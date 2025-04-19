@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios'; // ✅ FIXED
 import { useAuth } from '../context/AuthContext';
 
+
+
 import { Container, Row, Col, Card, Button, Form, Alert } from 'react-bootstrap';
 
 // Framer Motion
@@ -10,6 +12,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 // React Icons
 import { FaCog, FaFileAlt, FaSignOutAlt, FaUser, FaIdCard, FaUserNurse, FaUserMd, FaVideo, FaStop } from 'react-icons/fa';
+import { consultationAPI } from '../services/api';
 
 const Home = () => {
   const navigate = useNavigate();
@@ -159,9 +162,10 @@ const Home = () => {
           status: 'completed'
         };
 
-        
+        // Send consultation data to the backend
+        await consultationAPI.create(consultationData);
 
-       
+        // Clear form and state
         setSuccess('Consultation recorded and saved successfully!');
         setFormData({
           patientName: '',
@@ -542,4 +546,4 @@ const Home = () => {
   );
 };
 
-export default Home; 
+export default Home;
