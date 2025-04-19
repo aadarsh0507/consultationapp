@@ -45,37 +45,6 @@ const DoctorLogin = () => {
       console.log('Attempting login with:', formData);
       setDebugInfo(`Attempting login with: ${JSON.stringify(formData)}`);
       
-      // Admin login
-      if (formData.doctorId === 'admin' && formData.password === 'admin123') {
-        console.log('Admin login detected');
-        setDebugInfo('Admin login detected');
-        const adminUser = {
-          _id: 'admin',
-          name: 'Administrator',
-          role: 'admin',
-          doctorId: 'admin',
-          permissions: {
-            canManageUsers: true,
-            canManageSettings: true,
-            canViewReports: true,
-            canManageStorage: true
-          }
-        };
-        
-        localStorage.setItem('token', 'admin-token');
-        localStorage.setItem('user', JSON.stringify(adminUser));
-        setUser(adminUser);
-        setSuccess('Admin login successful!');
-
-        setTimeout(() => {
-          console.log('Navigating to home page');
-          setDebugInfo('Navigating to home page');
-          navigate('/home', { replace: true });
-        }, 100);
-        return;
-      }
-
-      // Regular doctor login
       const loggedInUser = await login(formData);
       console.log('Login successful, user:', loggedInUser);
       setDebugInfo(`Login successful, user: ${JSON.stringify(loggedInUser)}`);

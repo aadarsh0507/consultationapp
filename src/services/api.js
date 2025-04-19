@@ -8,34 +8,51 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true
 });
 
 // Request interceptor
+// Request interceptor
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    // Get the stored user data (e.g. after login)
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    
+    // Only add token if user is not admin
+    if (user?.role && user.role !== 'admin') {
+      const token = localStorage.getItem('token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`; // Attach token for non-admin users
+      }
     }
     return config;
   },
   (error) => {
-    return Promise.reject(error);
+    return Promise.reject(error); // Forward any errors in the request
   }
 );
 
 // Response interceptor
 api.interceptors.response.use(
-  (response) => response,
+  (response) => response, // Pass response directly if no error
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/doctor-login';
+    if (error.response?.status === 401) { // Unauthorized error
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      
+      // Only clear the auth data if the user is not admin
+      if (user?.role && user.role !== 'admin') {
+        // Remove token and user data from localStorage
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        
+        // Redirect to login page
+        window.location.href = '/doctor-login'; 
+      }
     }
-    return Promise.reject(error);
+    return Promise.reject(error); // Reject the error so it can be handled in your components
   }
 );
+
 
 // Auth API
 export const authAPI = {
@@ -78,14 +95,24 @@ export const consultationAPI = {
     }
   },
 
-  getAll: async () => {
+  getAll: async (filters = {}) => {
     try {
-      const response = await api.get('/consultations');
-      return response;
+      const response = await api.get('/consultations', { params: filters });
+      return {
+        success: true,
+        data: response.data.data,
+        message: response.data.message || 'Consultations fetched successfully'
+      };
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to get consultations');
+      console.error('Error fetching consultations:', error.response || error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Unable to fetch consultations. Please try again later.',
+        data: []
+      };
     }
   },
+  
 
   getById: async (id) => {
     try {

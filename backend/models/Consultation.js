@@ -24,25 +24,22 @@ const consultationSchema = new mongoose.Schema({
   },
   attenderName: {
     type: String,
-    required: [true, 'Attender name is required'],
     trim: true
   },
   icuConsultantName: {
     type: String,
-    required: [true, 'ICU consultant name is required'],
     trim: true
   },
   videoFileName: {
     type: String,
-    required: [true, 'Video filename is required']
+    trim: true
   },
   date: {
     type: Date,
     default: Date.now
   },
   recordingDuration: {
-    type: Number,
-    required: [true, 'Recording duration is required']
+    type: Number
   },
   status: {
     type: String,

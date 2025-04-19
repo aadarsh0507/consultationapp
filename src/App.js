@@ -9,6 +9,7 @@ import Home from './pages/Home';
 import Report from './pages/Report';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import './App.css';
+import StorageSettings from './pages/StorageSettings';
 
 // Protected Route component
 const ProtectedRoute = ({ children, requiredRole }) => {
@@ -63,6 +64,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            <Route path="/storage-settings" element={<StorageSettings />} />
             <Route path="/" element={<Navigate to="/doctor-login" replace />} />
           </Routes>
         </div>

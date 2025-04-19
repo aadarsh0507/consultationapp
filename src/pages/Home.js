@@ -1,10 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Container, Form, Button, Card, Row, Col, Alert, Spinner } from 'react-bootstrap';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaUser, FaIdCard, FaUserMd, FaUserNurse, FaVideo, FaStop, FaArrowLeft, FaSignOutAlt, FaFileAlt, FaCog } from 'react-icons/fa';
-import { consultationAPI } from '../services/api';
+import axios from 'axios'; // ✅ FIXED
 import { useAuth } from '../context/AuthContext';
+
+import { Container, Row, Col, Card, Button, Form, Alert } from 'react-bootstrap';
+
+// Framer Motion
+import { motion, AnimatePresence } from 'framer-motion';
+
+// React Icons
+import { FaCog, FaFileAlt, FaSignOutAlt, FaUser, FaIdCard, FaUserNurse, FaUserMd, FaVideo, FaStop } from 'react-icons/fa';
 
 const Home = () => {
   const navigate = useNavigate();
@@ -30,40 +35,12 @@ const Home = () => {
 
   useEffect(() => {
     return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+      if (timerRef.current) clearInterval(timerRef.current);
       if (mediaRecorderRef.current?.stream) {
         mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
       }
     };
   }, []);
-
-  useEffect(() => {
-    fetchConsultations();
-  }, []);
-
-  const fetchConsultations = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      const response = await consultationAPI.getAll();
-      if (response.success) {
-        // Sort consultations by date (newest first)
-        const sortedConsultations = response.data.sort((a, b) => 
-          new Date(b.date) - new Date(a.date)
-        );
-        setConsultations(sortedConsultations);
-      } else {
-        setError(response.message || 'Failed to fetch consultations');
-      }
-    } catch (err) {
-      setError('Failed to fetch consultations');
-      console.error('Error fetching consultations:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleChange = (e) => {
     setFormData({
@@ -74,36 +51,20 @@ const Home = () => {
 
   const startRecording = async () => {
     try {
-      // Validate form data before starting recording
       const requiredFields = ['patientName', 'uhidId', 'attenderName', 'icuConsultantName', 'doctorName'];
       const emptyFields = requiredFields.filter(field => !formData[field]);
-      
       if (emptyFields.length > 0) {
         setError(`Please fill in all required fields: ${emptyFields.join(', ')}`);
         return;
       }
 
-      // Show video container before requesting camera access
       setShowVideo(true);
 
-      // Request camera and microphone permissions
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: "user"
-        },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true
-        }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+        audio: { echoCancellation: true, noiseSuppression: true }
       });
 
-      if (!stream) {
-        throw new Error('Could not access camera or microphone');
-      }
-
-      // Set up video element
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play().catch(err => {
@@ -112,30 +73,22 @@ const Home = () => {
         });
       }
 
-      // Set up media recorder with better quality settings
       mediaRecorderRef.current = new MediaRecorder(stream, {
         mimeType: 'video/webm;codecs=vp9,opus',
         videoBitsPerSecond: 2500000
       });
+
       chunksRef.current = [];
 
       mediaRecorderRef.current.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data);
-        }
+        if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
-      mediaRecorderRef.current.onstop = () => {
-        console.log('Recording stopped, chunks collected:', chunksRef.current.length);
-      };
-
-      // Start recording
-      mediaRecorderRef.current.start(1000); // Collect data every second
+      mediaRecorderRef.current.start(1000);
       setIsRecording(true);
       setError('');
       setSuccess('Recording started...');
 
-      // Start timer
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
@@ -145,8 +98,6 @@ const Home = () => {
       setError(`Error starting recording: ${err.message}`);
       setIsRecording(false);
       setShowVideo(false);
-      
-      // Clean up if there was an error
       if (mediaRecorderRef.current?.stream) {
         mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
       }
@@ -158,15 +109,12 @@ const Home = () => {
       setLoading(true);
       setError('');
       try {
-        // Stop recording and timer
         mediaRecorderRef.current.stop();
         setIsRecording(false);
         clearInterval(timerRef.current);
-        
-        // Stop all tracks
+
         mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
 
-        // Wait for the last chunk to be collected
         await new Promise(resolve => {
           mediaRecorderRef.current.onstop = resolve;
         });
@@ -175,11 +123,9 @@ const Home = () => {
           throw new Error('No video data was recorded');
         }
 
-        // Create blob from recorded chunks
         const blob = new Blob(chunksRef.current, { type: 'video/webm' });
         const fileName = `consultation_${Date.now()}_${formData.uhidId}.webm`;
 
-        // Save file locally
         try {
           const fileHandle = await window.showSaveFilePicker({
             suggestedName: fileName,
@@ -192,7 +138,6 @@ const Home = () => {
           const writable = await fileHandle.createWritable();
           await writable.write(blob);
           await writable.close();
-
           setSuccess('Video saved successfully!');
         } catch (saveError) {
           console.error('Error saving file:', saveError);
@@ -201,7 +146,6 @@ const Home = () => {
           }
         }
 
-        // Save consultation data to MongoDB
         const consultationData = {
           patientName: formData.patientName,
           uhidId: formData.uhidId,
@@ -215,16 +159,10 @@ const Home = () => {
           status: 'completed'
         };
 
-        // Save to MongoDB
-        const response = await consultationAPI.create(consultationData);
         
-        if (!response.data) {
-          throw new Error('Failed to save consultation data to database');
-        }
 
+       
         setSuccess('Consultation recorded and saved successfully!');
-        
-        // Reset form and states
         setFormData({
           patientName: '',
           uhidId: '',
@@ -236,8 +174,6 @@ const Home = () => {
         setRecordingTime(0);
         chunksRef.current = [];
 
-        // Refresh consultations list
-        await fetchConsultations();
       } catch (err) {
         console.error('Error saving consultation:', err);
         setError(err.response?.data?.message || err.message || 'Error saving consultation. Please try again.');
@@ -305,14 +241,18 @@ const Home = () => {
                             Storage Settings
                           </Button>
                         )}
-                        <Button
-                          variant="primary"
-                          onClick={() => navigate('/report')}
-                          className="me-2 d-flex align-items-center"
-                        >
-                          <FaFileAlt className="me-2" />
-                          Reports
-                        </Button>
+                      
+
+                      <Button
+  variant="primary"
+  onClick={() => navigate('/report')}
+  className="me-2 d-flex align-items-center"
+>
+  <FaFileAlt className="me-2" />
+  Reports
+</Button>
+
+                        
                         <Button
                           variant="outline-danger"
                           onClick={handleLogout}

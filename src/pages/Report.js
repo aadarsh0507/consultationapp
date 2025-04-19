@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Form, Button, Table, Modal, Alert, Spinner } from 'react-bootstrap';
+import { Container, Row, Col, Card, Form, Button, Table, Modal, Alert, Spinner, Pagination } from 'react-bootstrap';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { FaFilePdf, FaFileExcel, FaFilter, FaArrowLeft, FaPlay } from 'react-icons/fa';
@@ -13,6 +13,7 @@ import { useAuth } from '../context/AuthContext';
 const Report = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+
   const [consultations, setConsultations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -25,24 +26,40 @@ const Report = () => {
   });
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [currentVideo, setCurrentVideo] = useState(null);
+  const [videoUrl, setVideoUrl] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [sortConfig, setSortConfig] = useState({ field: 'date', direction: 'desc' });
+  const [totalItems, setTotalItems] = useState(0);
 
   useEffect(() => {
     fetchConsultations();
-  }, []);
+  }, [currentPage, itemsPerPage, sortConfig, filters]);
 
   const fetchConsultations = async () => {
     try {
       setLoading(true);
       setError('');
-      const response = await consultationAPI.getAll();
+  
+      const response = await consultationAPI.getAll({
+        ...filters,
+        page: currentPage,
+        limit: itemsPerPage,
+        sortField: sortConfig.field,
+        sortDirection: sortConfig.direction
+      });
+
       if (response.success) {
-        setConsultations(response.data);
+        const consultations = response.data.consultations || [];
+        const total = response.data.total || 0;
+        setConsultations(consultations);
+        setTotalItems(total);
       } else {
-        setError(response.message || 'Failed to fetch consultations');
+        setError('Failed to fetch consultations');
       }
     } catch (err) {
       setError('Failed to fetch consultations');
-      console.error('Error fetching consultations:', err);
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -55,43 +72,47 @@ const Report = () => {
     });
   };
 
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+  };
+
+  const handleSort = (field) => {
+    setSortConfig((prevConfig) => ({
+      field,
+      direction: prevConfig.field === field && prevConfig.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  const handleItemsPerPageChange = (e) => {
+    setItemsPerPage(Number(e.target.value));
+    setCurrentPage(1);  // Reset to first page when items per page change
+  };
+
   const applyFilters = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      const response = await consultationAPI.getAll(filters);
-      if (response.success) {
-        setConsultations(response.data);
-      } else {
-        setError(response.message || 'Failed to apply filters');
-      }
-    } catch (err) {
-      setError('Failed to apply filters');
-      console.error('Error applying filters:', err);
-    } finally {
-      setLoading(false);
-    }
+    setCurrentPage(1);  // Reset to first page when applying filters
+    fetchConsultations();
   };
 
   const exportToPDF = () => {
     const doc = new jsPDF();
     doc.autoTable({
-      head: [['Date', 'Patient Name', 'UHID', 'Doctor', 'Attender', 'ICU Consultant', 'Duration']],
-      body: consultations.map(item => [
+      head: [['Date', 'Patient Name', 'UHID', 'Doctor', 'Attender', 'ICU Consultant', 'Duration', 'Status']],
+      body: consultations.map((item) => [
         new Date(item.date).toLocaleDateString(),
         item.patientName,
         item.uhidId,
         item.doctorName,
         item.attenderName,
         item.icuConsultantName,
-        `${item.recordingDuration} seconds`
-      ]),
+        `${item.recordingDuration} seconds`,
+        item.status
+      ])
     });
     doc.save('consultation_report.pdf');
   };
 
   const exportToExcel = () => {
-    const worksheet = XLSX.utils.json_to_sheet(consultations.map(item => ({
+    const worksheet = XLSX.utils.json_to_sheet(consultations.map((item) => ({
       Date: new Date(item.date).toLocaleDateString(),
       'Patient Name': item.patientName,
       UHID: item.uhidId,
@@ -109,47 +130,33 @@ const Report = () => {
   };
 
   const handleVideoClick = (consultation) => {
+    if (!consultation.videoFileName) {
+      setError('No video available for this consultation');
+      return;
+    }
+
+    const videoPath = `http://localhost:5000/videos/${consultation.videoFileName}`;
+    setVideoUrl(videoPath);
     setCurrentVideo(consultation);
     setShowVideoModal(true);
   };
 
   return (
     <Container className="py-5">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
-        <Card className="shadow-lg border-0" style={{ 
-          borderRadius: '20px',
-          background: 'rgba(255, 255, 255, 0.95)',
-          backdropFilter: 'blur(10px)'
-        }}>
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+        <Card className="shadow-lg border-0" style={{ borderRadius: '20px', background: 'rgba(255, 255, 255, 0.95)', backdropFilter: 'blur(10px)' }}>
           <Card.Body className="p-4">
             <div className="d-flex justify-content-between align-items-center mb-4">
-              <Button
-                variant="link"
-                onClick={() => navigate('/home')}
-                className="text-decoration-none"
-              >
+              <Button variant="link" onClick={() => navigate('/home')} className="text-decoration-none">
                 <FaArrowLeft className="me-2" />
                 Back to Home
               </Button>
               <div>
-                <Button
-                  variant="outline-primary"
-                  className="me-2"
-                  onClick={exportToPDF}
-                  disabled={loading || consultations.length === 0}
-                >
+                <Button variant="outline-primary" className="me-2" onClick={exportToPDF} disabled={loading || consultations.length === 0}>
                   <FaFilePdf className="me-2" />
                   Export PDF
                 </Button>
-                <Button
-                  variant="outline-success"
-                  onClick={exportToExcel}
-                  disabled={loading || consultations.length === 0}
-                >
+                <Button variant="outline-success" onClick={exportToExcel} disabled={loading || consultations.length === 0}>
                   <FaFileExcel className="me-2" />
                   Export Excel
                 </Button>
@@ -174,67 +181,35 @@ const Report = () => {
                   <Col md={3}>
                     <Form.Group className="mb-3">
                       <Form.Label>Date From</Form.Label>
-                      <Form.Control
-                        type="date"
-                        name="dateFrom"
-                        value={filters.dateFrom}
-                        onChange={handleFilterChange}
-                      />
+                      <Form.Control type="date" name="dateFrom" value={filters.dateFrom} onChange={handleFilterChange} />
                     </Form.Group>
                   </Col>
                   <Col md={3}>
                     <Form.Group className="mb-3">
                       <Form.Label>Date To</Form.Label>
-                      <Form.Control
-                        type="date"
-                        name="dateTo"
-                        value={filters.dateTo}
-                        onChange={handleFilterChange}
-                      />
+                      <Form.Control type="date" name="dateTo" value={filters.dateTo} onChange={handleFilterChange} />
                     </Form.Group>
                   </Col>
                   <Col md={2}>
                     <Form.Group className="mb-3">
                       <Form.Label>Patient Name</Form.Label>
-                      <Form.Control
-                        type="text"
-                        name="patientName"
-                        value={filters.patientName}
-                        onChange={handleFilterChange}
-                        placeholder="Search patient"
-                      />
+                      <Form.Control type="text" name="patientName" value={filters.patientName} onChange={handleFilterChange} placeholder="Search patient" />
                     </Form.Group>
                   </Col>
                   <Col md={2}>
                     <Form.Group className="mb-3">
                       <Form.Label>Doctor Name</Form.Label>
-                      <Form.Control
-                        type="text"
-                        name="doctorName"
-                        value={filters.doctorName}
-                        onChange={handleFilterChange}
-                        placeholder="Search doctor"
-                      />
+                      <Form.Control type="text" name="doctorName" value={filters.doctorName} onChange={handleFilterChange} placeholder="Search doctor" />
                     </Form.Group>
                   </Col>
                   <Col md={2}>
                     <Form.Group className="mb-3">
                       <Form.Label>UHID</Form.Label>
-                      <Form.Control
-                        type="text"
-                        name="uhidId"
-                        value={filters.uhidId}
-                        onChange={handleFilterChange}
-                        placeholder="Search UHID"
-                      />
+                      <Form.Control type="text" name="uhidId" value={filters.uhidId} onChange={handleFilterChange} placeholder="Search UHID" />
                     </Form.Group>
                   </Col>
                 </Row>
-                <Button
-                  variant="primary"
-                  onClick={applyFilters}
-                  disabled={loading}
-                >
+                <Button variant="primary" onClick={applyFilters} disabled={loading}>
                   Apply Filters
                 </Button>
               </Card.Body>
@@ -251,23 +226,56 @@ const Report = () => {
               </Alert>
             ) : (
               <div className="table-responsive">
-                <Table striped hover>
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <Form.Select style={{ width: 'auto' }} value={itemsPerPage} onChange={handleItemsPerPageChange} className="me-2">
+                    <option value="10">10 per page</option>
+                    <option value="25">25 per page</option>
+                    <option value="50">50 per page</option>
+                    <option value="100">100 per page</option>
+                  </Form.Select>
+                  <Pagination>
+                    <Pagination.First onClick={() => handlePageChange(1)} disabled={currentPage === 1} />
+                    <Pagination.Prev onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1} />
+                    {Array.from({ length: Math.ceil(totalItems / itemsPerPage) }).map((_, index) => (
+                      <Pagination.Item key={index + 1} active={index + 1 === currentPage} onClick={() => handlePageChange(index + 1)}>
+                        {index + 1}
+                      </Pagination.Item>
+                    ))}
+                    <Pagination.Next onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage === Math.ceil(totalItems / itemsPerPage)} />
+                    <Pagination.Last onClick={() => handlePageChange(Math.ceil(totalItems / itemsPerPage))} disabled={currentPage === Math.ceil(totalItems / itemsPerPage)} />
+                  </Pagination>
+                </div>
+
+                <Table striped hover className="align-middle">
                   <thead>
                     <tr>
-                      <th>Date</th>
-                      <th>Patient Name</th>
-                      <th>UHID</th>
-                      <th>Doctor</th>
+                      <th onClick={() => handleSort('date')} style={{ cursor: 'pointer' }}>
+                        Date {sortConfig.field === 'date' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th onClick={() => handleSort('patientName')} style={{ cursor: 'pointer' }}>
+                        Patient Name {sortConfig.field === 'patientName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th onClick={() => handleSort('uhidId')} style={{ cursor: 'pointer' }}>
+                        UHID {sortConfig.field === 'uhidId' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th onClick={() => handleSort('doctorName')} style={{ cursor: 'pointer' }}>
+                        Doctor {sortConfig.field === 'doctorName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
                       <th>Attender</th>
                       <th>ICU Consultant</th>
-                      <th>Duration</th>
+                      <th onClick={() => handleSort('recordingDuration')} style={{ cursor: 'pointer' }}>
+                        Duration {sortConfig.field === 'recordingDuration' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th onClick={() => handleSort('status')} style={{ cursor: 'pointer' }}>
+                        Status {sortConfig.field === 'status' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
                       <th>Video</th>
                     </tr>
                   </thead>
                   <tbody>
                     {consultations.map((consultation) => (
                       <tr key={consultation._id}>
-                        <td>{new Date(consultation.date).toLocaleDateString()}</td>
+                        <td>{new Date(consultation.date).toLocaleString()}</td>
                         <td>{consultation.patientName}</td>
                         <td>{consultation.uhidId}</td>
                         <td>{consultation.doctorName}</td>
@@ -275,12 +283,13 @@ const Report = () => {
                         <td>{consultation.icuConsultantName}</td>
                         <td>{consultation.recordingDuration} seconds</td>
                         <td>
-                          <Button
-                            variant="link"
-                            className="p-0"
-                            onClick={() => handleVideoClick(consultation)}
-                          >
-                            <FaPlay className="text-primary" />
+                          <span className={`badge bg-${consultation.status === 'completed' ? 'success' : 'warning'}`}>
+                            {consultation.status}
+                          </span>
+                        </td>
+                        <td>
+                          <Button variant="link" className="p-0" onClick={() => handleVideoClick(consultation)} disabled={!consultation.videoFileName}>
+                            <FaPlay className={consultation.videoFileName ? 'text-primary' : 'text-secondary'} />
                           </Button>
                         </td>
                       </tr>
@@ -289,36 +298,31 @@ const Report = () => {
                 </Table>
               </div>
             )}
-
-            <Modal show={showVideoModal} onHide={() => setShowVideoModal(false)} size="lg">
-              <Modal.Header closeButton>
-                <Modal.Title>
-                  {currentVideo?.patientName} - {currentVideo?.uhidId}
-                </Modal.Title>
-              </Modal.Header>
-              <Modal.Body>
-                <div className="ratio ratio-16x9">
-                  <video 
-                    src={`/uploads/${currentVideo?.videoFileName}`}
-                    controls 
-                    autoPlay
-                    style={{ width: '100%', height: '100%' }}
-                  >
-                    Your browser does not support the video tag.
-                  </video>
-                </div>
-              </Modal.Body>
-              <Modal.Footer>
-                <Button variant="secondary" onClick={() => setShowVideoModal(false)}>
-                  Close
-                </Button>
-              </Modal.Footer>
-            </Modal>
           </Card.Body>
         </Card>
       </motion.div>
+
+      {/* Video Modal */}
+      <Modal show={showVideoModal} onHide={() => setShowVideoModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Consultation Video</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {currentVideo && videoUrl && (
+            <div>
+              <h5>Video for {currentVideo.patientName}</h5>
+              <video controls src={videoUrl} className="w-100" />
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowVideoModal(false)}>
+            Close
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </Container>
   );
 };
 
-export default Report; 
+export default Report;

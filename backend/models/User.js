@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema({
   role: {
     type: String,
     enum: ['doctor', 'admin'],
-    required: [true, 'Please specify user role'],
+    required: [false, 'Please specify user role'],
     default: 'doctor'
   },
   createdAt: {

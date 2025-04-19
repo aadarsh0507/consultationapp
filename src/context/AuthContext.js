@@ -1,4 +1,5 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useMemo } from 'react';
+import axios from 'axios';
 import { authAPI } from '../services/api';
 
 const AuthContext = createContext();
@@ -9,23 +10,29 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [storagePath, setStoragePath] = useState(localStorage.getItem('storagePath') || '');
 
   useEffect(() => {
-    const initializeAuth = () => {
+    const initializeAuth = async () => {
       const token = localStorage.getItem('token');
       const userData = localStorage.getItem('user');
+      const savedPath = localStorage.getItem('storagePath');
+
+      if (savedPath) setStoragePath(savedPath);
 
       if (token && userData) {
         try {
           const parsedUser = JSON.parse(userData);
-          console.log('Initializing auth with user:', parsedUser);
+
+          axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
           setUser(parsedUser);
         } catch (err) {
-          console.error('Error parsing user data:', err);
+          console.error('Error initializing auth:', err);
           localStorage.removeItem('token');
           localStorage.removeItem('user');
         }
       }
+
       setLoading(false);
     };
 
@@ -36,11 +43,11 @@ export const AuthProvider = ({ children }) => {
     try {
       setLoading(true);
       setError(null);
-      console.log('Login attempt with credentials:', credentials);
 
-      // Check for admin credentials
-      if (credentials.doctorId === 'admin' && credentials.password === 'admin123') {
-        console.log('Admin login detected');
+      if (
+        credentials.doctorId?.toLowerCase() === 'admin' &&
+        credentials.password === 'admin123'
+      ) {
         const adminUser = {
           _id: 'admin',
           name: 'Administrator',
@@ -50,30 +57,26 @@ export const AuthProvider = ({ children }) => {
             canManageUsers: true,
             canManageSettings: true,
             canViewReports: true,
-            canManageStorage: true
-          }
+            canManageStorage: true,
+          },
         };
-        
-        console.log('Setting admin user data');
-        localStorage.setItem('token', 'admin-token');
         localStorage.setItem('user', JSON.stringify(adminUser));
         setUser(adminUser);
-        console.log('Admin login successful, user set:', adminUser);
         return adminUser;
       }
 
-      console.log('Attempting regular doctor login');
-      // Regular doctor login
       const response = await authAPI.login(credentials);
       const { token, user } = response.data;
-      
+
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       setUser(user);
       return user;
     } catch (err) {
       console.error('Login error:', err);
-      setError(err.response?.data?.message || 'Login failed');
+      const errorMessage = err.response?.data?.message || 'Login failed. Please check your credentials.';
+      setError(errorMessage);
       throw err;
     } finally {
       setLoading(false);
@@ -86,13 +89,15 @@ export const AuthProvider = ({ children }) => {
       setError(null);
       const response = await authAPI.register(userData);
       const { token, user } = response.data;
-      
+
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       setUser(user);
       return user;
     } catch (err) {
-      setError(err.response?.data?.message || 'Registration failed');
+      const errorMessage = err.response?.data?.message || 'Registration failed. Please try again later.';
+      setError(errorMessage);
       throw err;
     } finally {
       setLoading(false);
@@ -103,22 +108,35 @@ export const AuthProvider = ({ children }) => {
     console.log('Logging out user');
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('storagePath');
+    delete axios.defaults.headers.common['Authorization'];
     setUser(null);
+    setStoragePath('');
   };
 
-  const value = {
-    user,
-    loading,
-    error,
-    login,
-    register,
-    logout,
-    setUser
+  const updateStoragePath = (newPath) => {
+    localStorage.setItem('storagePath', newPath);
+    setStoragePath(newPath);
   };
+
+  const value = useMemo(
+    () => ({
+      user,
+      loading,
+      error,
+      login,
+      register,
+      logout,
+      setUser,
+      storagePath,
+      updateStoragePath,
+    }),
+    [user, loading, error, storagePath]
+  );
 
   return (
     <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
-}; 
+};
