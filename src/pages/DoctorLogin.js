@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 
 const DoctorLogin = () => {
   const navigate = useNavigate();
-  const { login, user, setUser } = useAuth();
+  const { login, user } = useAuth();
   const [formData, setFormData] = useState({
     doctorId: '',
     password: ''
@@ -20,12 +20,11 @@ const DoctorLogin = () => {
 
   // Redirect if user is already logged in
   useEffect(() => {
-    if (user) {
+    if (user && !loading) {
       console.log('User already logged in, redirecting to home');
-      setDebugInfo('User already logged in, redirecting to home');
       navigate('/home', { replace: true });
     }
-  }, [user, navigate]);
+  }, [user, navigate, loading]);
 
   const handleChange = (e) => {
     setFormData({
@@ -44,49 +43,17 @@ const DoctorLogin = () => {
     try {
       console.log('Attempting login with:', formData);
       setDebugInfo(`Attempting login with: ${JSON.stringify(formData)}`);
-      
-      // Admin login
-      if (formData.doctorId === 'admin' && formData.password === 'admin123') {
-        console.log('Admin login detected');
-        setDebugInfo('Admin login detected');
-        const adminUser = {
-          _id: 'admin',
-          name: 'Administrator',
-          role: 'admin',
-          doctorId: 'admin',
-          permissions: {
-            canManageUsers: true,
-            canManageSettings: true,
-            canViewReports: true,
-            canManageStorage: true
-          }
-        };
-        
-        localStorage.setItem('token', 'admin-token');
-        localStorage.setItem('user', JSON.stringify(adminUser));
-        setUser(adminUser);
-        setSuccess('Admin login successful!');
 
-        setTimeout(() => {
-          console.log('Navigating to home page');
-          setDebugInfo('Navigating to home page');
-          navigate('/home', { replace: true });
-        }, 100);
-        return;
-      }
-
-      // Regular doctor login
+      // Make login request
       const loggedInUser = await login(formData);
       console.log('Login successful, user:', loggedInUser);
       setDebugInfo(`Login successful, user: ${JSON.stringify(loggedInUser)}`);
-      
+
       setSuccess('Login successful!');
-      setTimeout(() => {
-        navigate('/home', { replace: true });
-      }, 100);
+      // Navigation will be handled by the useEffect when user state updates
     } catch (err) {
       console.error('Login error:', err);
-      const errorMessage = err.message || 'Login failed. Please check your credentials.';
+      const errorMessage = err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';
       setError(errorMessage);
       setDebugInfo(`Error: ${errorMessage}\nFull error: ${JSON.stringify(err, null, 2)}`);
     } finally {
@@ -106,7 +73,7 @@ const DoctorLogin = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
             >
-              <Card className="shadow-lg border-0" style={{ 
+              <Card className="shadow-lg border-0" style={{
                 borderRadius: '20px',
                 background: 'rgba(255, 255, 255, 0.95)',
                 backdropFilter: 'blur(10px)'

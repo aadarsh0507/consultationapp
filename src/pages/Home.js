@@ -1,10 +1,18 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Container, Form, Button, Card, Row, Col, Alert, Spinner } from 'react-bootstrap';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaUser, FaIdCard, FaUserMd, FaUserNurse, FaVideo, FaStop, FaArrowLeft, FaSignOutAlt, FaFileAlt, FaCog } from 'react-icons/fa';
-import { consultationAPI } from '../services/api';
+import axios from 'axios'; // ✅ FIXED
 import { useAuth } from '../context/AuthContext';
+
+
+
+import { Container, Row, Col, Card, Button, Form, Alert } from 'react-bootstrap';
+
+// Framer Motion
+import { motion, AnimatePresence } from 'framer-motion';
+
+// React Icons
+import { FaCog, FaFileAlt, FaSignOutAlt, FaUser, FaIdCard, FaUserNurse, FaUserMd, FaVideo, FaStop } from 'react-icons/fa';
+import { consultationAPI } from '../services/api';
 
 const Home = () => {
   const navigate = useNavigate();
@@ -22,48 +30,44 @@ const Home = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [showVideo, setShowVideo] = useState(false);
+  const [showStorageSettings, setShowStorageSettings] = useState(false);
+  const [storagePath, setStoragePath] = useState('');
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
+  const startTimeRef = useRef(null);
   const [consultations, setConsultations] = useState([]);
+  const [storageSettings, setStorageSettings] = useState({
+    path: '',
+    maxSize: 1024, // in MB
+    allowedTypes: ['webm', 'mp4']
+  });
+
+  // Fetch storage path when component mounts
+  useEffect(() => {
+    const fetchStoragePath = async () => {
+      try {
+        const response = await axios.get('http://localhost:5000/get-storage-path');
+        if (response.data && response.data.path) {
+          setStoragePath(response.data.path);
+        }
+      } catch (error) {
+        console.error('Error fetching storage path:', error);
+      }
+    };
+
+    fetchStoragePath();
+  }, []);
 
   useEffect(() => {
     return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+      if (timerRef.current) clearInterval(timerRef.current);
       if (mediaRecorderRef.current?.stream) {
         mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
       }
     };
   }, []);
-
-  useEffect(() => {
-    fetchConsultations();
-  }, []);
-
-  const fetchConsultations = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      const response = await consultationAPI.getAll();
-      if (response.success) {
-        // Sort consultations by date (newest first)
-        const sortedConsultations = response.data.sort((a, b) => 
-          new Date(b.date) - new Date(a.date)
-        );
-        setConsultations(sortedConsultations);
-      } else {
-        setError(response.message || 'Failed to fetch consultations');
-      }
-    } catch (err) {
-      setError('Failed to fetch consultations');
-      console.error('Error fetching consultations:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleChange = (e) => {
     setFormData({
@@ -74,36 +78,20 @@ const Home = () => {
 
   const startRecording = async () => {
     try {
-      // Validate form data before starting recording
       const requiredFields = ['patientName', 'uhidId', 'attenderName', 'icuConsultantName', 'doctorName'];
       const emptyFields = requiredFields.filter(field => !formData[field]);
-      
       if (emptyFields.length > 0) {
         setError(`Please fill in all required fields: ${emptyFields.join(', ')}`);
         return;
       }
 
-      // Show video container before requesting camera access
       setShowVideo(true);
 
-      // Request camera and microphone permissions
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: "user"
-        },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true
-        }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+        audio: { echoCancellation: true, noiseSuppression: true }
       });
 
-      if (!stream) {
-        throw new Error('Could not access camera or microphone');
-      }
-
-      // Set up video element
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play().catch(err => {
@@ -112,32 +100,27 @@ const Home = () => {
         });
       }
 
-      // Set up media recorder with better quality settings
       mediaRecorderRef.current = new MediaRecorder(stream, {
         mimeType: 'video/webm;codecs=vp9,opus',
         videoBitsPerSecond: 2500000
       });
+
       chunksRef.current = [];
 
       mediaRecorderRef.current.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data);
-        }
+        if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
-      mediaRecorderRef.current.onstop = () => {
-        console.log('Recording stopped, chunks collected:', chunksRef.current.length);
-      };
-
-      // Start recording
-      mediaRecorderRef.current.start(1000); // Collect data every second
+      mediaRecorderRef.current.start(1000);
       setIsRecording(true);
       setError('');
       setSuccess('Recording started...');
 
-      // Start timer
+      startTimeRef.current = Date.now();
+      
       timerRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
+        const elapsedTime = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        setRecordingTime(elapsedTime);
       }, 1000);
 
     } catch (err) {
@@ -145,8 +128,6 @@ const Home = () => {
       setError(`Error starting recording: ${err.message}`);
       setIsRecording(false);
       setShowVideo(false);
-      
-      // Clean up if there was an error
       if (mediaRecorderRef.current?.stream) {
         mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
       }
@@ -158,15 +139,14 @@ const Home = () => {
       setLoading(true);
       setError('');
       try {
-        // Stop recording and timer
         mediaRecorderRef.current.stop();
         setIsRecording(false);
         clearInterval(timerRef.current);
-        
-        // Stop all tracks
+        timerRef.current = null;
+        startTimeRef.current = null;
+
         mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
 
-        // Wait for the last chunk to be collected
         await new Promise(resolve => {
           mediaRecorderRef.current.onstop = resolve;
         });
@@ -175,37 +155,33 @@ const Home = () => {
           throw new Error('No video data was recorded');
         }
 
-        // Create blob from recorded chunks
         const blob = new Blob(chunksRef.current, { type: 'video/webm' });
         const fileName = `consultation_${Date.now()}_${formData.uhidId}.webm`;
 
-        // Save file locally
-        try {
-          const fileHandle = await window.showSaveFilePicker({
-            suggestedName: fileName,
-            types: [{
-              description: 'WebM Video',
-              accept: { 'video/webm': ['.webm'] }
-            }]
-          });
+        // Create FormData with the video and storage path
+        const uploadFormData = new FormData();
+        uploadFormData.append('videoFile', blob, fileName);
+        uploadFormData.append('storagePath', storagePath);
 
-          const writable = await fileHandle.createWritable();
-          await writable.write(blob);
-          await writable.close();
+        console.log('Uploading video to path:', storagePath);
 
-          setSuccess('Video saved successfully!');
-        } catch (saveError) {
-          console.error('Error saving file:', saveError);
-          if (saveError.name !== 'AbortError') {
-            setError('Error saving video file. Please try again.');
+        // Upload the video to the backend
+        const uploadResponse = await axios.post('http://localhost:5000/save-video', uploadFormData, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
           }
+        });
+
+        if (!uploadResponse.data.success) {
+          throw new Error('Failed to upload video');
         }
 
-        // Save consultation data to MongoDB
+        console.log('Video uploaded successfully:', uploadResponse.data);
+
         const consultationData = {
           patientName: formData.patientName,
           uhidId: formData.uhidId,
-          doctor: user?._id,
+          doctor: user.id,
           doctorName: formData.doctorName,
           attenderName: formData.attenderName,
           icuConsultantName: formData.icuConsultantName,
@@ -215,16 +191,24 @@ const Home = () => {
           status: 'completed'
         };
 
-        // Save to MongoDB
-        const response = await consultationAPI.create(consultationData);
-        
-        if (!response.data) {
-          throw new Error('Failed to save consultation data to database');
+        console.log('Sending consultation data:', consultationData);
+
+        // Send consultation data to the backend
+        try {
+          const response = await consultationAPI.create(consultationData);
+          console.log('Consultation API response:', response);
+          
+          if (response && response.data) {
+            setSuccess('Consultation recorded and saved successfully!');
+          } else {
+            throw new Error('Failed to save consultation: Invalid response format');
+          }
+        } catch (apiError) {
+          console.error('Consultation API error:', apiError);
+          throw new Error(apiError.response?.data?.message || 'Failed to save consultation data');
         }
 
-        setSuccess('Consultation recorded and saved successfully!');
-        
-        // Reset form and states
+        // Clear form and state
         setFormData({
           patientName: '',
           uhidId: '',
@@ -236,8 +220,6 @@ const Home = () => {
         setRecordingTime(0);
         chunksRef.current = [];
 
-        // Refresh consultations list
-        await fetchConsultations();
       } catch (err) {
         console.error('Error saving consultation:', err);
         setError(err.response?.data?.message || err.message || 'Error saving consultation. Please try again.');
@@ -256,6 +238,23 @@ const Home = () => {
   const handleLogout = () => {
     logout();
     navigate('/doctor-login');
+  };
+
+  const handleStorageSettings = async () => {
+    if (user?.role !== 'admin') return;
+    
+    try {
+      const response = await axios.post('http://localhost:5000/update-storage-path', {
+        newStoragePath: storagePath
+      });
+      
+      if (response.data.success) {
+        setSuccess('Storage path updated successfully');
+        setShowStorageSettings(false);
+      }
+    } catch (err) {
+      setError('Failed to update storage path');
+    }
   };
 
   return (
@@ -298,8 +297,8 @@ const Home = () => {
                         {user?.role === 'admin' && (
                           <Button
                             variant="outline-primary"
-                            onClick={() => navigate('/storage-settings')}
-                            className="d-flex align-items-center"
+                            onClick={() => setShowStorageSettings(!showStorageSettings)}
+                            className="me-2"
                           >
                             <FaCog className="me-2" />
                             Storage Settings
@@ -308,7 +307,7 @@ const Home = () => {
                         <Button
                           variant="primary"
                           onClick={() => navigate('/report')}
-                          className="me-2 d-flex align-items-center"
+                          className="me-2"
                         >
                           <FaFileAlt className="me-2" />
                           Reports
@@ -316,7 +315,6 @@ const Home = () => {
                         <Button
                           variant="outline-danger"
                           onClick={handleLogout}
-                          className="d-flex align-items-center"
                         >
                           <FaSignOutAlt className="me-2" />
                           Logout
@@ -324,13 +322,44 @@ const Home = () => {
                       </motion.div>
                     </div>
 
-                    <AnimatePresence mode="wait">
+                    {showStorageSettings && user?.role === 'admin' && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="mb-4 p-3 border rounded"
+                      >
+                        <h5>Storage Settings</h5>
+                        <Form.Group className="mb-3">
+                          <Form.Label>Current Storage Path</Form.Label>
+                          <Form.Control
+                            type="text"
+                            value={storagePath}
+                            onChange={(e) => setStoragePath(e.target.value)}
+                            placeholder="Enter storage path"
+                            readOnly
+                          />
+                          <Form.Text className="text-muted">
+                            Current path where videos are being stored
+                          </Form.Text>
+                        </Form.Group>
+                        <Button
+                          variant="primary"
+                          onClick={handleStorageSettings}
+                        >
+                          Update Path
+                        </Button>
+                      </motion.div>
+                    )}
+
+                    <AnimatePresence mode="sync">
                       {error && (
                         <motion.div
                           initial={{ opacity: 0, y: -10 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -10 }}
                           transition={{ duration: 0.3 }}
+                          key="error"
                         >
                           <Alert variant="danger" className="mb-4">
                             {error}
@@ -343,6 +372,7 @@ const Home = () => {
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -10 }}
                           transition={{ duration: 0.3 }}
+                          key="success"
                         >
                           <Alert variant="success" className="mb-4">
                             {success}
@@ -602,4 +632,4 @@ const Home = () => {
   );
 };
 
-export default Home; 
+export default Home;

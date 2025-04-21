@@ -10,7 +10,7 @@ const api = axios.create({
   },
 });
 
-// Request interceptor
+// Request interceptor for API calls
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -24,11 +24,12 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor
+// Response interceptor for API calls
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      // Clear token and redirect to login
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.href = '/doctor-login';
@@ -40,106 +41,73 @@ api.interceptors.response.use(
 // Auth API
 export const authAPI = {
   login: async (credentials) => {
+    console.log('Making login request with credentials:', {
+      doctorId: credentials.doctorId,
+      password: '***' // Don't log the actual password
+    });
     try {
       const response = await api.post('/auth/login', credentials);
+      console.log('Login response:', response.data);
+      
+      if (!response.data.success) {
+        console.error('Login failed:', response.data.message);
+        throw new Error(response.data.message || 'Login failed');
+      }
+      
+      if (!response.data.token) {
+        console.error('No token in response:', response.data);
+        throw new Error('No authentication token received');
+      }
+      
+      console.log('Storing token and user data');
+      localStorage.setItem('token', response.data.token);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
       return response;
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Login failed');
+      console.error('Login API error:', error.response?.data || error.message);
+      if (error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      }
+      throw error;
     }
   },
-
-  register: async (userData) => {
-    try {
-      const response = await api.post('/auth/register', userData);
-      return response;
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Registration failed');
-    }
+  register: (data) => api.post('/auth/register', data),
+  getCurrentUser: () => api.get('/auth/me'),
+  logout: () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    return api.post('/auth/logout');
   },
-
-  getCurrentUser: async () => {
-    try {
-      const response = await api.get('/auth/me');
-      return response;
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to get user data');
-    }
-  }
 };
 
 // Consultation API
 export const consultationAPI = {
-  create: async (consultationData) => {
+  create: (data) => api.post('/consultations', data),
+  getAll: async (filters = {}) => {
     try {
-      const response = await api.post('/consultations', consultationData);
+      console.log('Fetching consultations with filters:', filters);
+      const response = await api.get('/consultations', { params: filters });
+      console.log('Consultations response:', response.data);
+      
+      if (!response.data) {
+        throw new Error('No data received from server');
+      }
+      
       return response;
     } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to create consultation');
+      console.error('Error fetching consultations:', error.response?.data || error.message);
+      throw error;
     }
   },
-
-  getAll: async () => {
-    try {
-      const response = await api.get('/consultations');
-      return response;
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to get consultations');
-    }
-  },
-
-  getById: async (id) => {
-    try {
-      const response = await api.get(`/consultations/${id}`);
-      return response;
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to get consultation');
-    }
-  },
-
-  update: async (id, consultationData) => {
-    try {
-      const response = await api.put(`/consultations/${id}`, consultationData);
-      return response;
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to update consultation');
-    }
-  },
-
-  delete: async (id) => {
-    try {
-      const response = await api.delete(`/consultations/${id}`);
-      return response;
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to delete consultation');
-    }
-  },
-
-  uploadVideo: async (formData) => {
-    try {
-      const response = await api.post('/consultations/upload-video', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        },
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          console.log(`Upload progress: ${percentCompleted}%`);
-        }
-      });
-      return response;
-    } catch (error) {
-      console.error('Video upload error:', error);
-      throw new Error(error.response?.data?.message || 'Failed to upload video');
-    }
-  },
-
-  getVideoUrl: async (videoPath) => {
-    try {
-      const response = await api.get(`/consultations/video/${videoPath}`);
-      return response.data.url;
-    } catch (error) {
-      throw new Error(error.response?.data?.message || 'Failed to get video URL');
-    }
-  }
+  getById: (id) => api.get(`/consultations/${id}`),
+  update: (id, data) => api.put(`/consultations/${id}`, data),
+  delete: (id) => api.delete(`/consultations/${id}`),
+  uploadVideo: (formData, onUploadProgress) =>
+    api.post('/consultations/upload-video', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress,
+    }),
+  getVideoUrl: (path) => api.get(`/consultations/video/${path}`),
 };
 
-export default api; 
+export default api;
