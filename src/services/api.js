@@ -8,38 +8,31 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 5000,  // Timeout after 5 seconds
 });
 
-// Request interceptor: read token from localStorage
+// Request interceptor for API calls
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    console.log('Request Config:', config);  // Log request for debugging
     return config;
   },
   (error) => {
-    console.error('Request Error:', error);
     return Promise.reject(error);
   }
 );
 
-// Response interceptor: on 401, purge token + user and redirect
+// Response interceptor for API calls
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Clear token and user data from localStorage on 401 error
+      // Clear token and redirect to login
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.href = '/doctor-login';
-    }
-    if (error.response?.status === 500) {
-      // Handle server errors
-      alert('Something went wrong, please try again later.');
     }
     return Promise.reject(error);
   }
@@ -47,16 +40,65 @@ api.interceptors.response.use(
 
 // Auth API
 export const authAPI = {
-  login: (creds) => api.post('/auth/login', creds),
+  login: async (credentials) => {
+    console.log('Making login request with credentials:', {
+      doctorId: credentials.doctorId,
+      password: '***' // Don't log the actual password
+    });
+    try {
+      const response = await api.post('/auth/login', credentials);
+      console.log('Login response:', response.data);
+      
+      if (!response.data.success) {
+        console.error('Login failed:', response.data.message);
+        throw new Error(response.data.message || 'Login failed');
+      }
+      
+      if (!response.data.token) {
+        console.error('No token in response:', response.data);
+        throw new Error('No authentication token received');
+      }
+      
+      console.log('Storing token and user data');
+      localStorage.setItem('token', response.data.token);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+      return response;
+    } catch (error) {
+      console.error('Login API error:', error.response?.data || error.message);
+      if (error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      }
+      throw error;
+    }
+  },
   register: (data) => api.post('/auth/register', data),
   getCurrentUser: () => api.get('/auth/me'),
-  logout: () => api.post('/auth/logout'),
+  logout: () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    return api.post('/auth/logout');
+  },
 };
 
 // Consultation API
 export const consultationAPI = {
   create: (data) => api.post('/consultations', data),
-  getAll: (filters = {}) => api.get('/consultations', { params: filters }),
+  getAll: async (filters = {}) => {
+    try {
+      console.log('Fetching consultations with filters:', filters);
+      const response = await api.get('/consultations', { params: filters });
+      console.log('Consultations response:', response.data);
+      
+      if (!response.data) {
+        throw new Error('No data received from server');
+      }
+      
+      return response;
+    } catch (error) {
+      console.error('Error fetching consultations:', error.response?.data || error.message);
+      throw error;
+    }
+  },
   getById: (id) => api.get(`/consultations/${id}`),
   update: (id, data) => api.put(`/consultations/${id}`, data),
   delete: (id) => api.delete(`/consultations/${id}`),

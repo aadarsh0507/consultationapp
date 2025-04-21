@@ -30,11 +30,35 @@ const Home = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [showVideo, setShowVideo] = useState(false);
+  const [showStorageSettings, setShowStorageSettings] = useState(false);
+  const [storagePath, setStoragePath] = useState('');
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
+  const startTimeRef = useRef(null);
   const [consultations, setConsultations] = useState([]);
+  const [storageSettings, setStorageSettings] = useState({
+    path: '',
+    maxSize: 1024, // in MB
+    allowedTypes: ['webm', 'mp4']
+  });
+
+  // Fetch storage path when component mounts
+  useEffect(() => {
+    const fetchStoragePath = async () => {
+      try {
+        const response = await axios.get('http://localhost:5000/get-storage-path');
+        if (response.data && response.data.path) {
+          setStoragePath(response.data.path);
+        }
+      } catch (error) {
+        console.error('Error fetching storage path:', error);
+      }
+    };
+
+    fetchStoragePath();
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -92,8 +116,11 @@ const Home = () => {
       setError('');
       setSuccess('Recording started...');
 
+      startTimeRef.current = Date.now();
+      
       timerRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
+        const elapsedTime = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        setRecordingTime(elapsedTime);
       }, 1000);
 
     } catch (err) {
@@ -115,6 +142,8 @@ const Home = () => {
         mediaRecorderRef.current.stop();
         setIsRecording(false);
         clearInterval(timerRef.current);
+        timerRef.current = null;
+        startTimeRef.current = null;
 
         mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
 
@@ -129,30 +158,30 @@ const Home = () => {
         const blob = new Blob(chunksRef.current, { type: 'video/webm' });
         const fileName = `consultation_${Date.now()}_${formData.uhidId}.webm`;
 
-        try {
-          const fileHandle = await window.showSaveFilePicker({
-            suggestedName: fileName,
-            types: [{
-              description: 'WebM Video',
-              accept: { 'video/webm': ['.webm'] }
-            }]
-          });
+        // Create FormData with the video and storage path
+        const uploadFormData = new FormData();
+        uploadFormData.append('videoFile', blob, fileName);
+        uploadFormData.append('storagePath', storagePath);
 
-          const writable = await fileHandle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-          setSuccess('Video saved successfully!');
-        } catch (saveError) {
-          console.error('Error saving file:', saveError);
-          if (saveError.name !== 'AbortError') {
-            setError('Error saving video file. Please try again.');
+        console.log('Uploading video to path:', storagePath);
+
+        // Upload the video to the backend
+        const uploadResponse = await axios.post('http://localhost:5000/save-video', uploadFormData, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
           }
+        });
+
+        if (!uploadResponse.data.success) {
+          throw new Error('Failed to upload video');
         }
+
+        console.log('Video uploaded successfully:', uploadResponse.data);
 
         const consultationData = {
           patientName: formData.patientName,
           uhidId: formData.uhidId,
-          doctor: user?._id,
+          doctor: user.id,
           doctorName: formData.doctorName,
           attenderName: formData.attenderName,
           icuConsultantName: formData.icuConsultantName,
@@ -162,11 +191,24 @@ const Home = () => {
           status: 'completed'
         };
 
+        console.log('Sending consultation data:', consultationData);
+
         // Send consultation data to the backend
-        await consultationAPI.create(consultationData);
+        try {
+          const response = await consultationAPI.create(consultationData);
+          console.log('Consultation API response:', response);
+          
+          if (response && response.data) {
+            setSuccess('Consultation recorded and saved successfully!');
+          } else {
+            throw new Error('Failed to save consultation: Invalid response format');
+          }
+        } catch (apiError) {
+          console.error('Consultation API error:', apiError);
+          throw new Error(apiError.response?.data?.message || 'Failed to save consultation data');
+        }
 
         // Clear form and state
-        setSuccess('Consultation recorded and saved successfully!');
         setFormData({
           patientName: '',
           uhidId: '',
@@ -196,6 +238,23 @@ const Home = () => {
   const handleLogout = () => {
     logout();
     navigate('/doctor-login');
+  };
+
+  const handleStorageSettings = async () => {
+    if (user?.role !== 'admin') return;
+    
+    try {
+      const response = await axios.post('http://localhost:5000/update-storage-path', {
+        newStoragePath: storagePath
+      });
+      
+      if (response.data.success) {
+        setSuccess('Storage path updated successfully');
+        setShowStorageSettings(false);
+      }
+    } catch (err) {
+      setError('Failed to update storage path');
+    }
   };
 
   return (
@@ -238,29 +297,24 @@ const Home = () => {
                         {user?.role === 'admin' && (
                           <Button
                             variant="outline-primary"
-                            onClick={() => navigate('/storage-settings')}
-                            className="d-flex align-items-center"
+                            onClick={() => setShowStorageSettings(!showStorageSettings)}
+                            className="me-2"
                           >
                             <FaCog className="me-2" />
                             Storage Settings
                           </Button>
                         )}
-                      
-
-                      <Button
-  variant="primary"
-  onClick={() => navigate('/report')}
-  className="me-2 d-flex align-items-center"
->
-  <FaFileAlt className="me-2" />
-  Reports
-</Button>
-
-                        
+                        <Button
+                          variant="primary"
+                          onClick={() => navigate('/report')}
+                          className="me-2"
+                        >
+                          <FaFileAlt className="me-2" />
+                          Reports
+                        </Button>
                         <Button
                           variant="outline-danger"
                           onClick={handleLogout}
-                          className="d-flex align-items-center"
                         >
                           <FaSignOutAlt className="me-2" />
                           Logout
@@ -268,13 +322,44 @@ const Home = () => {
                       </motion.div>
                     </div>
 
-                    <AnimatePresence mode="wait">
+                    {showStorageSettings && user?.role === 'admin' && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="mb-4 p-3 border rounded"
+                      >
+                        <h5>Storage Settings</h5>
+                        <Form.Group className="mb-3">
+                          <Form.Label>Current Storage Path</Form.Label>
+                          <Form.Control
+                            type="text"
+                            value={storagePath}
+                            onChange={(e) => setStoragePath(e.target.value)}
+                            placeholder="Enter storage path"
+                            readOnly
+                          />
+                          <Form.Text className="text-muted">
+                            Current path where videos are being stored
+                          </Form.Text>
+                        </Form.Group>
+                        <Button
+                          variant="primary"
+                          onClick={handleStorageSettings}
+                        >
+                          Update Path
+                        </Button>
+                      </motion.div>
+                    )}
+
+                    <AnimatePresence mode="sync">
                       {error && (
                         <motion.div
                           initial={{ opacity: 0, y: -10 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -10 }}
                           transition={{ duration: 0.3 }}
+                          key="error"
                         >
                           <Alert variant="danger" className="mb-4">
                             {error}
@@ -287,6 +372,7 @@ const Home = () => {
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -10 }}
                           transition={{ duration: 0.3 }}
+                          key="success"
                         >
                           <Alert variant="success" className="mb-4">
                             {success}

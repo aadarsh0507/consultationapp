@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const Consultation = require('../models/Consultation');
-const { authorize } = require('../middleware/auth');
+const { protect, authorize } = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
 
 // Load dynamic storage path
@@ -40,7 +40,7 @@ const upload = multer({
 });
 
 // Upload a video
-router.post('/upload', authorize('doctor', 'admin'), upload.single('video'), (req, res) => {
+router.post('/upload', upload.single('video'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: 'No video file uploaded' });
   }
@@ -51,6 +51,7 @@ router.post('/upload', authorize('doctor', 'admin'), upload.single('video'), (re
 router.post(
   '/',
   [
+    protect,
     authorize('doctor', 'admin'),
     body('patientName').notEmpty().withMessage('Patient name is required'),
     body('doctorName').notEmpty().withMessage('Doctor name is required'),
@@ -66,31 +67,13 @@ router.post(
       console.log('🚀 Consultation request body:', req.body);
       console.log('🔐 Authenticated user:', req.user);
 
-      if (!req.user || !req.user.id) {
-        return res.status(401).json({ success: false, message: 'Unauthorized: Missing doctor ID' });
-      }
+      const consultationData = {
+        ...req.body,
+        doctor: req.user.id
+      };
 
-      const {
-        patientName, uhidId, doctorName,
-        attenderName, icuConsultantName,
-        videoFileName, recordingDuration, notes
-      } = req.body;
-
-      const consultation = new Consultation({
-        patientName,
-        uhidId,
-        doctor: req.user.id,
-        doctorName,
-        attenderName,
-        icuConsultantName,
-        videoFileName,
-        recordingDuration,
-        notes,
-        status: 'completed'
-      });
-
-      await consultation.save();
-      res.status(201).json({ success: true, data: consultation });
+      const consultation = await Consultation.create(consultationData);
+      res.status(201).json(consultation);
     } catch (error) {
       console.error('❌ Error creating consultation:', error);
       if (error.code === 11000) {
@@ -106,7 +89,7 @@ router.post(
 );
 
 // Get all consultations
-router.get('/', async (req, res) => {
+router.get('/', protect, async (req, res) => {
   try {
     const {
       dateFrom, dateTo, patientName, doctorName,
@@ -135,16 +118,24 @@ router.get('/', async (req, res) => {
     const consultations = await Consultation.find(query)
       .sort({ [sortField]: sortDirection === 'asc' ? 1 : -1 })
       .skip(skip)
-      .limit(limitNum)
-      .populate('doctor', 'name email');
+      .limit(limitNum);
 
     res.status(200).json({
       success: true,
-      data: { consultations, total, page: pageNum, totalPages: Math.ceil(total / limitNum) }
+      data: {
+        consultations,
+        total,
+        page: pageNum,
+        totalPages: Math.ceil(total / limitNum)
+      }
     });
   } catch (error) {
     console.error('Error fetching consultations:', error);
-    res.status(500).json({ success: false, message: 'Server error', error: process.env.NODE_ENV === 'development' ? error.message : undefined });
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error', 
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined 
+    });
   }
 });
 

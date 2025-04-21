@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 
 const DoctorLogin = () => {
   const navigate = useNavigate();
-  const { login, user, setUser } = useAuth();
+  const { login, user } = useAuth();
   const [formData, setFormData] = useState({
     doctorId: '',
     password: ''
@@ -20,12 +20,11 @@ const DoctorLogin = () => {
 
   // Redirect if user is already logged in
   useEffect(() => {
-    if (user) {
+    if (user && !loading) {
       console.log('User already logged in, redirecting to home');
-      setDebugInfo('User already logged in, redirecting to home');
       navigate('/home', { replace: true });
     }
-  }, [user, navigate]);
+  }, [user, navigate, loading]);
 
   const handleChange = (e) => {
     setFormData({
@@ -51,9 +50,7 @@ const DoctorLogin = () => {
       setDebugInfo(`Login successful, user: ${JSON.stringify(loggedInUser)}`);
 
       setSuccess('Login successful!');
-      setTimeout(() => {
-        navigate('/home', { replace: true });
-      }, 1000);  // Added delay for better UX
+      // Navigation will be handled by the useEffect when user state updates
     } catch (err) {
       console.error('Login error:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Login failed. Please check your credentials.';

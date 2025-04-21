@@ -13,8 +13,7 @@ const consultationSchema = new mongoose.Schema({
     trim: true
   },
   doctor: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    type: mongoose.Schema.Types.Mixed,
     required: [true, 'Doctor ID is required']
   },
   doctorName: {

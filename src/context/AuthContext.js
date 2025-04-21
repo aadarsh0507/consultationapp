@@ -6,7 +6,6 @@ export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('token') || null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [storagePath, setStoragePath] = useState(localStorage.getItem('storagePath') || '');
@@ -14,20 +13,20 @@ export function AuthProvider({ children }) {
   // Initialize auth: restore token and fetch user
   useEffect(() => {
     async function initialize() {
-      const savedToken = localStorage.getItem('token');
-      if (savedToken) {
-        setToken(savedToken);
-        try {
-          const { data } = await authAPI.getCurrentUser();
-          setUser(data.user);
-        } catch (err) {
-          console.error('Session fetch failed:', err);
-          localStorage.removeItem('token');
-          setToken(null);
-        }
-      }
       const savedPath = localStorage.getItem('storagePath');
+      const savedUser = localStorage.getItem('user');
+      const savedToken = localStorage.getItem('token');
+      
+      console.log('Initializing auth with saved data:', { savedPath, savedUser, savedToken }); // Debug log
+      
       if (savedPath) setStoragePath(savedPath);
+      if (savedUser) setUser(JSON.parse(savedUser));
+      if (!savedToken) {
+        // If no token, clear user data
+        console.log('No token found, clearing user data'); // Debug log
+        localStorage.removeItem('user');
+        setUser(null);
+      }
       setLoading(false);
     }
     initialize();
@@ -37,41 +36,34 @@ export function AuthProvider({ children }) {
     setLoading(true);
     setError(null);
     try {
-      // Admin override logic
-      if (
-        credentials.doctorId?.toLowerCase() === 'admin' &&
-        credentials.password === 'admin123'
-      ) {
-        const adminUser = {
-          _id: 'admin',
-          name: 'Administrator',
-          role: 'admin',
-          doctorId: 'admin',
-          permissions: {
-            canManageUsers: true,
-            canManageSettings: true,
-            canViewReports: true,
-            canManageStorage: true,
-          },
-        };
-        localStorage.setItem('user', JSON.stringify(adminUser));
-        setUser(adminUser);
-        return adminUser;
-      }
-
+      console.log('Attempting login with credentials:', {
+        doctorId: credentials.doctorId,
+        password: '***' // Don't log the actual password
+      });
+      
       const response = await authAPI.login(credentials);
+      console.log('Login response:', response.data);
+      
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Login failed');
+      }
+      
       const { token, user } = response.data;
-
-      // Persist session
+      
+      if (!token || !user) {
+        throw new Error('Invalid response from server');
+      }
+      
+      // Store token and user data
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
-      setToken(token);
       setUser(user);
-
+      
+      console.log('Login successful, user and token stored');
       return user;
     } catch (err) {
       console.error('Login error:', err);
-      const errorMessage = err.response?.data?.message || 'Login failed';
+      const errorMessage = err.response?.data?.message || err.message || 'Login failed';
       setError(errorMessage);
       throw new Error(errorMessage);
     } finally {
@@ -85,12 +77,11 @@ export function AuthProvider({ children }) {
     try {
       const response = await authAPI.register(userData);
       const { token, user } = response.data;
-
+      
+      // Store token and user data
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
-      setToken(token);
       setUser(user);
-
       return user;
     } catch (err) {
       const errorMessage = err.response?.data?.message || 'Registration failed';
@@ -104,15 +95,15 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     try {
       await authAPI.logout();
-    } catch (e) {
-      console.error('Logout failed:', e);
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('storagePath');
+      setUser(null);
+      setStoragePath('');
     }
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('storagePath');
-    setToken(null);
-    setUser(null);
-    setStoragePath('');
   };
 
   const updateStoragePath = useCallback((newPath) => {
@@ -121,8 +112,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, token, loading, error, login, register, logout, storagePath, updateStoragePath }),
-    [user, token, loading, error, storagePath, login, updateStoragePath] // Add dependencies here
+    () => ({ user, loading, error, login, register, logout, storagePath, updateStoragePath }),
+    [user, loading, error, storagePath, login, updateStoragePath]
   );
 
   return (

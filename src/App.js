@@ -14,30 +14,23 @@ import StorageSettings from './pages/StorageSettings';
 
 // Protected Route component
 const ProtectedRoute = ({ children, requiredRole }) => {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    console.log('ProtectedRoute: Loading state');
-    return (
-      <Container className="d-flex justify-content-center align-items-center min-vh-100">
-        <div className="spinner-border text-primary" role="status">
-          <span className="visually-hidden">Loading...</span>
-        </div>
-      </Container>
-    );
-  }
-
+  const { user } = useAuth();
+  
+  // If no user is logged in, redirect to login
   if (!user) {
-    console.log('ProtectedRoute: No user found, redirecting to login');
     return <Navigate to="/doctor-login" replace />;
   }
 
-  if (requiredRole && user.role !== requiredRole && !(user.role === 'admin' && requiredRole === 'doctor')) {
-    console.log('ProtectedRoute: User role mismatch', { userRole: user.role, requiredRole });
+  // For report page, allow both doctors and admins
+  if (window.location.pathname === '/report' && !['doctor', 'admin'].includes(user.role)) {
     return <Navigate to="/home" replace />;
   }
 
-  console.log('ProtectedRoute: Access granted', { userRole: user.role, requiredRole });
+  // If a specific role is required and user is not admin, check if user has that role
+  if (requiredRole && user.role !== 'admin' && user.role !== requiredRole) {
+    return <Navigate to="/doctor-login" replace />;
+  }
+
   return children;
 };
 

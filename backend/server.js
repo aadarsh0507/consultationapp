@@ -11,6 +11,7 @@ const xss = require('xss-clean');
 const hpp = require('hpp');
 const fs = require('fs');
 const multer = require('multer');  // Add multer for file uploads
+const User = require('./models/User');
 
 // Load environment variables
 dotenv.config();
@@ -31,7 +32,8 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   credentials: true,
-  preflightContinue: true
+  preflightContinue: true,
+  exposedHeaders: ['Content-Range', 'Content-Length', 'Content-Type']
 }));
 
 // Rate limiting with more generous limits for development
@@ -87,6 +89,8 @@ app.post('/update-storage-path', (req, res) => {
     res.status(500).json({ error: 'Error saving storage path', details: error.message });
   }
 });
+
+// GET request to retrieve the current storage path
 app.get('/get-storage-path', (req, res) => {
   const storagePath = getStoragePath();
   if (!storagePath) {
@@ -132,8 +136,22 @@ app.post('/save-video', upload.single('videoFile'), (req, res) => {
 // Middleware for logging requests
 app.use(morgan('dev'));
 
-// Serve static files from the uploads directory
-app.use('/React', express.static('E:/React'));
+// Serve videos from the dynamic storage path
+app.use('/videos', (req, res, next) => {
+  const storagePath = getStoragePath();
+  if (!storagePath) {
+    return res.status(500).json({ error: 'Storage path not configured' });
+  }
+  
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+  
+  // Serve static files from the storage path
+  express.static(storagePath)(req, res, next);
+});
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -149,24 +167,35 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Connect to MongoDB
+// Connect to MongoDB and create admin user
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/consultationapp';
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-  .then(() => {
+
+async function startServer() {
+  try {
+    // Connect to MongoDB
+    await mongoose.connect(MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
     console.log('Connected to MongoDB');
+
+    // Create default admin user
+    await User.createDefaultAdmin();
+    console.log('Admin user creation completed');
+
     // Start server
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
     });
-  })
-  .catch(err => {
-    console.error('MongoDB connection error:', err);
+  } catch (err) {
+    console.error('Error during server startup:', err);
     process.exit(1);
-  });
+  }
+}
+
+// Start the server
+startServer();
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
