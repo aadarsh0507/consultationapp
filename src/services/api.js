@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_URL = 'https://consultation-backend-nmyg.onrender.com';
+const API_URL = 'https://consultation-backend-nmyg.onrender.com/api'; // Replace with your backend URL
+
+// 'https://consultation-backend-nmyg.onrender.com';
 
 // Create axios instance
 const api = axios.create({

@@ -142,7 +142,7 @@ const AdminDashboard = () => {
       return;
     }
 
-    const videoPath = `http://localhost:5000/videos/${consultation.videoFileName}`;
+    const videoPath = `https://consultation-backend-nmyg.onrender.com/videos/${consultation.videoFileName}`;
     setVideoUrl(videoPath);
     setCurrentVideo(consultation);
     setShowVideoModal(true);

@@ -48,7 +48,7 @@ const Home = () => {
   useEffect(() => {
     const fetchStoragePath = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/get-storage-path');
+        const response = await axios.get('https://consultation-backend-nmyg.onrender.com/get-storage-path');
         if (response.data && response.data.path) {
           setStoragePath(response.data.path);
         }
@@ -166,7 +166,7 @@ const Home = () => {
         console.log('Uploading video to path:', storagePath);
 
         // Upload the video to the backend
-        const uploadResponse = await axios.post('http://localhost:5000/save-video', uploadFormData, {
+        const uploadResponse = await axios.post('https://consultation-backend-nmyg.onrender.com/save-video', uploadFormData, {
           headers: {
             'Content-Type': 'multipart/form-data'
           }
@@ -244,7 +244,7 @@ const Home = () => {
     if (user?.role !== 'admin') return;
     
     try {
-      const response = await axios.post('http://localhost:5000/update-storage-path', {
+      const response = await axios.post('https://consultation-backend-nmyg.onrender.com/update-storage-path', {
         newStoragePath: storagePath
       });
       
@@ -323,34 +323,31 @@ const Home = () => {
                     </div>
 
                     {showStorageSettings && user?.role === 'admin' && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -20 }}
-                        className="mb-4 p-3 border rounded"
-                      >
-                        <h5>Storage Settings</h5>
-                        <Form.Group className="mb-3">
-                          <Form.Label>Current Storage Path</Form.Label>
-                          <Form.Control
-                            type="text"
-                            value={storagePath}
-                            onChange={(e) => setStoragePath(e.target.value)}
-                            placeholder="Enter storage path"
-                            readOnly
-                          />
-                          <Form.Text className="text-muted">
-                            Current path where videos are being stored
-                          </Form.Text>
-                        </Form.Group>
-                        <Button
-                          variant="primary"
-                          onClick={handleStorageSettings}
-                        >
-                          Update Path
-                        </Button>
-                      </motion.div>
-                    )}
+  <motion.div
+    initial={{ opacity: 0, y: -20 }}
+    animate={{ opacity: 1, y: 0 }}
+    exit={{ opacity: 0, y: -20 }}
+    className="mb-4 p-3 border rounded"
+  >
+    <h5>Storage Settings</h5>
+    <Form.Group className="mb-3">
+      <Form.Label>Current Storage Path</Form.Label>
+      <Form.Control
+        type="text"
+        value={storagePath}
+        onChange={(e) => setStoragePath(e.target.value)}
+        placeholder="Enter storage path"
+      />
+      <Form.Text className="text-muted">
+        Current path where videos are being stored
+      </Form.Text>
+    </Form.Group>
+    <Button variant="primary" onClick={handleStorageSettings}>
+      Update Path
+    </Button>
+  </motion.div>
+)}
+
 
                     <AnimatePresence mode="sync">
                       {error && (

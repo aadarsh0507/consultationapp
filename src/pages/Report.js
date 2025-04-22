@@ -213,7 +213,7 @@ const Report = () => {
   const checkVideoExists = async (videoFileName) => {
     try {
       // Check if file exists by making a request to the server's video endpoint
-      const existsResponse = await axios.head(`http://localhost:5000/videos/${videoFileName}`);
+      const existsResponse = await axios.head(`https://consultation-backend-nmyg.onrender.com/videos/${videoFileName}`);
       return existsResponse.status === 200;
     } catch (error) {
       console.error('Error checking video:', error);
@@ -241,7 +241,7 @@ const Report = () => {
       }
 
       // Use the server's video endpoint
-      const videoPath = `http://localhost:5000/videos/${consultation.videoFileName}`;
+      const videoPath = `https://consultation-backend-nmyg.onrender.com/videos/${consultation.videoFileName}`;
       
       setCurrentVideoPath(videoPath);
       setShowVideoModal(true);

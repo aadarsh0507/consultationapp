@@ -15,7 +15,7 @@ const StorageSettings = () => {
   useEffect(() => {
     const fetchStoragePath = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/get-storage-path');
+        const response = await axios.get('https://consultation-backend-nmyg.onrender.com/get-storage-path');
         setCurrentStoragePath(response.data.path);
       } catch (err) {
         setError('Failed to fetch current storage path.');
@@ -28,7 +28,7 @@ const StorageSettings = () => {
   const handleStoragePathChange = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post('http://localhost:5000/update-storage-path', {
+      const response = await axios.post('https://consultation-backend-nmyg.onrender.com/update-storage-path', {
         newStoragePath: newStoragePath
       });
 
@@ -59,7 +59,7 @@ const StorageSettings = () => {
     formData.append('videoFile', videoFile);
   
     try {
-      const response = await axios.post('http://localhost:5000/save-video', formData, {
+      const response = await axios.post('https://consultation-backend-nmyg.onrender.com/save-video', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
   
