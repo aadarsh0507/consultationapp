@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Container, Card, Form, Button, Alert } from 'react-bootstrap';
+import { API_URL } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 const StorageSettings = () => {
+  const { storagePath, updateStoragePath } = useAuth();
   const [newStoragePath, setNewStoragePath] = useState('');
-  const [currentStoragePath, setCurrentStoragePath] = useState('');
+  const [currentStoragePath, setCurrentStoragePath] = useState(storagePath);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [videoFile, setVideoFile] = useState(null);
@@ -15,29 +18,39 @@ const StorageSettings = () => {
   useEffect(() => {
     const fetchStoragePath = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/get-storage-path');
+        const response = await axios.get(`${API_URL}/get-storage-path`);
         setCurrentStoragePath(response.data.path);
+        updateStoragePath(response.data.path); // Update global state
       } catch (err) {
         setError('Failed to fetch current storage path.');
       }
     };
     fetchStoragePath();
-  }, []);
+  }, [updateStoragePath]);
 
   // Handle storage path change
   const handleStoragePathChange = async (e) => {
     e.preventDefault();
+    if (!newStoragePath.trim()) {
+      setError('Storage path cannot be empty');
+      return;
+    }
     try {
-      const response = await axios.post('http://localhost:5000/update-storage-path', {
-        newStoragePath: newStoragePath
+      const response = await axios.post(`${API_URL}/update-storage-path`, {
+        newStoragePath: newStoragePath.trim()
       });
 
-      setSuccessMessage(response.data.message);
-      setError('');
-      setCurrentStoragePath(newStoragePath);  // Update the current path displayed
-      setNewStoragePath('');
+      if (response.data.success) {
+        setSuccessMessage(response.data.message || 'Storage path updated successfully');
+        setError('');
+        updateStoragePath(newStoragePath.trim());  // Update global state
+        setCurrentStoragePath(newStoragePath.trim());  // Update local state
+        setNewStoragePath('');
+      } else {
+        throw new Error(response.data.error || 'Failed to update storage path');
+      }
     } catch (err) {
-      setError(err.response.data.error || 'Something went wrong!');
+      setError(err.response?.data?.error || err.message || 'Failed to update storage path');
       setSuccessMessage('');
     }
   };
@@ -59,7 +72,7 @@ const StorageSettings = () => {
     formData.append('videoFile', videoFile);
   
     try {
-      const response = await axios.post('http://localhost:5000/save-video', formData, {
+      const response = await axios.post(`${API_URL}/save-video`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
   

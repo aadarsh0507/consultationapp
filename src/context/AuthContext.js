@@ -10,6 +10,18 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState(null);
   const [storagePath, setStoragePath] = useState(localStorage.getItem('storagePath') || '');
 
+  // Clear local storage when window closes
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('storagePath');
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
   // Initialize auth: restore token and fetch user
   useEffect(() => {
     async function initialize() {

@@ -7,7 +7,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import { consultationAPI } from '../services/api';
+import { consultationAPI, API_URL } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 
@@ -213,7 +213,7 @@ const Report = () => {
   const checkVideoExists = async (videoFileName) => {
     try {
       // Check if file exists by making a request to the server's video endpoint
-      const existsResponse = await axios.head(`http://localhost:5000/videos/${videoFileName}`);
+      const existsResponse = await axios.head(`${API_URL}/videos/${videoFileName}`);
       return existsResponse.status === 200;
     } catch (error) {
       console.error('Error checking video:', error);
@@ -241,7 +241,7 @@ const Report = () => {
       }
 
       // Use the server's video endpoint
-      const videoPath = `http://localhost:5000/videos/${consultation.videoFileName}`;
+      const videoPath = `${API_URL}/videos/${consultation.videoFileName}`;
       
       setCurrentVideoPath(videoPath);
       setShowVideoModal(true);

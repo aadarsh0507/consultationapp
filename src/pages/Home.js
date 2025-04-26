@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios'; // ✅ FIXED
+import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { API_URL } from '../services/api';
 
 
 
@@ -48,7 +49,7 @@ const Home = () => {
   useEffect(() => {
     const fetchStoragePath = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/get-storage-path');
+        const response = await axios.get(`${API_URL}/get-storage-path`);
         if (response.data && response.data.path) {
           setStoragePath(response.data.path);
         }
@@ -78,61 +79,86 @@ const Home = () => {
 
   const startRecording = async () => {
     try {
-      const requiredFields = ['patientName', 'uhidId', 'attenderName', 'icuConsultantName', 'doctorName'];
-      const emptyFields = requiredFields.filter(field => !formData[field]);
-      if (emptyFields.length > 0) {
-        setError(`Please fill in all required fields: ${emptyFields.join(', ')}`);
-        return;
-      }
+        const requiredFields = ['patientName', 'uhidId', 'attenderName', 'icuConsultantName', 'doctorName'];
+        const emptyFields = requiredFields.filter(field => !formData[field]);
+        if (emptyFields.length > 0) {
+            setError(`Please fill in all required fields: ${emptyFields.join(', ')}`);
+            return;
+        }
 
-      setShowVideo(true);
+        setShowVideo(true);
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
-        audio: { echoCancellation: true, noiseSuppression: true }
-      });
+        // Try to get media with ideal constraints first
+        let stream;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: "user"
+                },
+                audio: { echoCancellation: true, noiseSuppression: true }
+            });
+        } catch (err) {
+            console.warn('Failed to get ideal constraints, trying basic constraints');
+            // Fallback to basic constraints if ideal fails
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            });
+        }
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(err => {
-          console.error('Error playing video:', err);
-          setError('Error initializing camera');
+        if (!stream) {
+            throw new Error('Could not access any webcam device');
+        }
+
+        if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            await videoRef.current.play().catch(err => {
+                console.error('Error playing video:', err);
+                setError('Error initializing camera');
+            });
+        }
+
+        // Get video track settings for debugging
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack) {
+            console.log('Video track settings:', videoTrack.getSettings());
+        }
+
+        mediaRecorderRef.current = new MediaRecorder(stream, {
+            mimeType: 'video/webm;codecs=vp9,opus',
+            videoBitsPerSecond: 2500000
         });
-      }
 
-      mediaRecorderRef.current = new MediaRecorder(stream, {
-        mimeType: 'video/webm;codecs=vp9,opus',
-        videoBitsPerSecond: 2500000
-      });
+        chunksRef.current = [];
 
-      chunksRef.current = [];
+        mediaRecorderRef.current.ondataavailable = (e) => {
+            if (e.data.size > 0) chunksRef.current.push(e.data);
+        };
 
-      mediaRecorderRef.current.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
+        mediaRecorderRef.current.start(1000);
+        setIsRecording(true);
+        setError('');
+        setSuccess('Recording started...');
 
-      mediaRecorderRef.current.start(1000);
-      setIsRecording(true);
-      setError('');
-      setSuccess('Recording started...');
-
-      startTimeRef.current = Date.now();
-      
-      timerRef.current = setInterval(() => {
-        const elapsedTime = Math.floor((Date.now() - startTimeRef.current) / 1000);
-        setRecordingTime(elapsedTime);
-      }, 1000);
+        startTimeRef.current = Date.now();
+        
+        timerRef.current = setInterval(() => {
+            const elapsedTime = Math.floor((Date.now() - startTimeRef.current) / 1000);
+            setRecordingTime(elapsedTime);
+        }, 1000);
 
     } catch (err) {
-      console.error('Recording error:', err);
-      setError(`Error starting recording: ${err.message}`);
-      setIsRecording(false);
-      setShowVideo(false);
-      if (mediaRecorderRef.current?.stream) {
-        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-      }
+        console.error('Recording error:', err);
+        setError(`Error starting recording: ${err.message}`);
+        setIsRecording(false);
+        setShowVideo(false);
+        if (mediaRecorderRef.current?.stream) {
+            mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+        }
     }
-  };
+};
 
   const stopRecording = async () => {
     if (mediaRecorderRef.current && isRecording) {
@@ -166,7 +192,7 @@ const Home = () => {
         console.log('Uploading video to path:', storagePath);
 
         // Upload the video to the backend
-        const uploadResponse = await axios.post('http://localhost:5000/save-video', uploadFormData, {
+        const uploadResponse = await axios.post(`${API_URL}/save-video`, uploadFormData, {
           headers: {
             'Content-Type': 'multipart/form-data'
           }
@@ -332,13 +358,15 @@ const Home = () => {
                         <h5>Storage Settings</h5>
                         <Form.Group className="mb-3">
                           <Form.Label>Current Storage Path</Form.Label>
-                          <Form.Control
-                            type="text"
-                            value={storagePath}
-                            onChange={(e) => setStoragePath(e.target.value)}
-                            placeholder="Enter storage path"
-                            readOnly
-                          />
+                          <div className="input-group">
+                            <Form.Control
+                              type="text"
+                              value={storagePath}
+                              onChange={(e) => setStoragePath(e.target.value)}
+                              placeholder="Enter storage path"
+                              className="form-control"
+                            />
+                          </div>
                           <Form.Text className="text-muted">
                             Current path where videos are being stored
                           </Form.Text>
