@@ -97,7 +97,11 @@ const Home = () => {
                     height: { ideal: 720 },
                     facingMode: "user"
                 },
-                audio: { echoCancellation: true, noiseSuppression: true }
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
             });
         } catch (err) {
             console.warn('Failed to get ideal constraints, trying basic constraints');
@@ -128,7 +132,8 @@ const Home = () => {
 
         mediaRecorderRef.current = new MediaRecorder(stream, {
             mimeType: 'video/webm;codecs=vp9,opus',
-            videoBitsPerSecond: 2500000
+            videoBitsPerSecond: 2500000,
+            audioBitsPerSecond: 128000 // Add audio bitrate
         });
 
         chunksRef.current = [];
@@ -270,7 +275,7 @@ const Home = () => {
     if (user?.role !== 'admin') return;
     
     try {
-      const response = await axios.post('http://localhost:5000/update-storage-path', {
+      const response = await axios.post(`${API_URL}/update-storage-path`, {
         newStoragePath: storagePath
       });
       
